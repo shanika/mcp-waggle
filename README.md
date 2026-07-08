@@ -23,14 +23,47 @@ whose architecture — including the OAuth 2.1 HTTP transport — it follows.)
 | `get_tecture_research` | Fetch one research, including linked test runs + activities |
 | `log_activity` | Record a development activity — research-linked (`researchId`) or direct code work |
 | `list_activities` | List activities; filter by researchId, scope (`research`/`code`), or query |
-| `publish_test_results` | Record a test run (suite + pass/fail/skip counts; status and total derived) |
-| `list_test_runs` | List runs, newest first; filter by suite/status |
-| `get_test_run` | Fetch one run including its full output |
+| `publish_test_results` | Record a test run with its full per-test report (`tests[]`: name, file, status, duration, error, console logs — counts and status derived); bare counts only as a fallback |
+| `list_test_runs` | List runs, newest first, without per-test reports; filter by suite/status |
+| `get_test_run` | Fetch one run including its full per-test report and run-level output |
 | `write_progress` | Append a project progress entry (summary + optional details) |
 | `read_progress` | Read the latest progress entry plus recent history |
 
 The research tools carry the `tecture_` prefix deliberately, so they don't collide with other
 research-log connectors in the same Claude workspace.
+
+### Publishing full Vitest reports (with per-test console logs)
+
+Vitest's built-in JSON reporter (`--reporter=json`) includes per-test names, statuses, durations
+and failure messages — but **no console output**. To capture logs per test, use the bundled
+custom reporter, which listens to `onUserConsoleLog` (its `taskId` matches `TestCase.id`) and
+writes a payload that can be passed to `publish_test_results` verbatim:
+
+```bash
+npm run test:report   # = vitest run --reporter=default --reporter=./scripts/vitest-waggle-reporter.mjs
+# → waggle-report.json: { suite, durationMs, tests: [{ name, file, status, durationMs, error?, logs? }] }
+```
+
+`WAGGLE_SUITE` and `WAGGLE_REPORT_FILE` override the suite name and output path. The reporter is
+self-contained — copy `scripts/vitest-waggle-reporter.mjs` into any Vitest project that publishes
+to Waggle.
+
+## Dashboard
+
+A read-only web interface over the same database — browse researches, activities, test runs and
+the progress journal without going through MCP:
+
+```bash
+npm run ui          # http://127.0.0.1:3204
+```
+
+It is deliberately unauthenticated and binds to loopback; it never mutates data.
+
+| Env var | Default | Purpose |
+| --- | --- | --- |
+| `WAGGLE_UI_PORT` | `3204` | Dashboard port |
+| `WAGGLE_UI_HOST` | `127.0.0.1` | Bind host |
+| `DB_PATH` | `~/.waggle/waggle.db` | Same database the MCP server uses |
 
 ## Transports
 
@@ -69,7 +102,10 @@ npm run smoke       # end-to-end STDIO smoke test of the built server
 ```
 
 `node dist/index.js migrate` applies migrations and exits (they also run automatically on
-startup).
+startup). `npm run db:seed` (= `node dist/index.js seed`) inserts a snapshot of real
+tecture-graph tracking data (captured 2026-07-09 from the live Waggle instance: the CodeGraph
+DB-survey research with its linked activities and test run, plus the progress journal) into
+`DB_PATH`; it is idempotent, so re-running never duplicates rows.
 
 ## Development
 
@@ -77,8 +113,9 @@ startup).
   SQLite via `better-sqlite3`, Drizzle ORM with committed migrations, `tsup`, Vitest, ESLint.
 - **Layout:** `src/index.ts` (entry/dispatch) → `src/transport/{stdio,http}.ts` →
   `src/server.ts` (tool registration) → `src/tools/*` (pure functions + thin MCP wrappers) →
-  `src/oauth/*` (provider, JSON-file token store, consent page) → `src/db/*` (schema, connection
-  + migration runner) → `src/lib/ids.ts` (nanoid prefixes: `res_`, `act_`, `run_`, `prog_`).
+  `src/oauth/*` (provider, JSON-file token store, consent page) → `src/ui/*` (read-only local
+  dashboard: Express routes + server-rendered HTML) → `src/db/*` (schema, connection + migration
+  runner, seed fixtures) → `src/lib/ids.ts` (nanoid prefixes: `res_`, `act_`, `run_`, `prog_`).
 
 ```bash
 npm test               # all Vitest suites (fresh in-memory SQLite per test)

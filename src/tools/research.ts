@@ -128,7 +128,7 @@ export function listResearch(db: WaggleDatabase, input: ListResearchInput = {}):
 export function getResearch(
   db: WaggleDatabase,
   input: { researchId: string },
-): ResearchView & { testRuns: TestRun[]; activities: Activity[] } {
+): ResearchView & { testRuns: Omit<TestRun, 'report'>[]; activities: Activity[] } {
   const row = db
     .select()
     .from(researchActivities)
@@ -142,7 +142,9 @@ export function getResearch(
     .from(testRuns)
     .where(eq(testRuns.researchId, input.researchId))
     .orderBy(desc(testRuns.ranAt))
-    .all();
+    .all()
+    // The per-test report can be large — fetch it via get_test_run instead.
+    .map(({ report: _report, ...rest }) => rest);
   const linkedActivities = db
     .select()
     .from(activities)

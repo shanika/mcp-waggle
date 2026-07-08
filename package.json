@@ -20,9 +20,12 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:report": "vitest run --reporter=default --reporter=./scripts/vitest-waggle-reporter.mjs",
     "smoke": "node scripts/smoke.mjs",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "node dist/index.js migrate"
+    "db:migrate": "node dist/index.js migrate",
+    "db:seed": "node dist/index.js seed",
+    "ui": "node dist/index.js ui"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

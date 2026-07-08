@@ -15,6 +15,13 @@
       "when": 1783533383283,
       "tag": "0001_activities",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1783547734471,
+      "tag": "0002_parallel_klaw",
+      "breakpoints": true
     }
   ]
 }

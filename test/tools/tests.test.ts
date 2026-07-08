@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { logResearch } from '../../src/tools/research.js';
+import { getResearch, logResearch } from '../../src/tools/research.js';
 import { getTestRun, listTestRuns, publishTestResults } from '../../src/tools/tests.js';
 import { createTestDatabase, disposeTestDatabase, type TestDatabase } from '../db/setup.js';
 
@@ -40,6 +40,63 @@ describe('test run tools', () => {
     expect(run.researchId).toBe(research.id);
     const fetched = getTestRun(testDb.db, { runId: run.id });
     expect(fetched.output).toContain('AssertionError');
+  });
+
+  it('derives counts, total and status from a per-test report', () => {
+    const run = publishTestResults(testDb.db, {
+      suite: 'pnpm test',
+      tests: [
+        { name: 'a > passes', status: 'passed', file: 'test/a.test.ts', durationMs: 12 },
+        { name: 'a > also passes', status: 'passed', file: 'test/a.test.ts', durationMs: 3 },
+        {
+          name: 'b > breaks',
+          status: 'failed',
+          file: 'test/b.test.ts',
+          error: 'AssertionError: expected 1 to be 2',
+          logs: 'console.log before failing',
+        },
+        { name: 'b > not yet', status: 'skipped', file: 'test/b.test.ts' },
+      ],
+    });
+    expect(run.status).toBe('failed');
+    expect(run.total).toBe(4);
+    expect(run.passed).toBe(2);
+    expect(run.failed).toBe(1);
+    expect(run.skipped).toBe(1);
+  });
+
+  it('round-trips the per-test report through getTestRun', () => {
+    const run = publishTestResults(testDb.db, {
+      suite: 'pnpm test',
+      tests: [
+        { name: 'x > works', status: 'passed', file: 'test/x.test.ts', durationMs: 5, logs: 'hello' },
+      ],
+    });
+    const fetched = getTestRun(testDb.db, { runId: run.id });
+    expect(fetched.tests).toEqual([
+      { name: 'x > works', status: 'passed', file: 'test/x.test.ts', durationMs: 5, logs: 'hello' },
+    ]);
+    expect(fetched).not.toHaveProperty('report');
+  });
+
+  it('omits the report from lists and research-linked runs', () => {
+    const research = logResearch(testDb.db, { title: 'A', goal: 'B' });
+    publishTestResults(testDb.db, {
+      suite: 'pnpm test',
+      researchId: research.id,
+      tests: [{ name: 'x', status: 'passed' }],
+    });
+    expect(listTestRuns(testDb.db)[0]).not.toHaveProperty('report');
+    expect(getResearch(testDb.db, { researchId: research.id }).testRuns[0]).not.toHaveProperty(
+      'report',
+    );
+  });
+
+  it('requires either counts or a tests[] report', () => {
+    expect(() => publishTestResults(testDb.db, { suite: 'unit' })).toThrow(/passed\/failed counts/);
+    expect(() => publishTestResults(testDb.db, { suite: 'unit', passed: 1 })).toThrow(
+      /passed\/failed counts/,
+    );
   });
 
   it('rejects unknown researchId with a clear error', () => {

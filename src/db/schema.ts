@@ -6,6 +6,23 @@ export type ResearchStatus = (typeof RESEARCH_STATUSES)[number];
 export const TEST_RUN_STATUSES = ['passed', 'failed'] as const;
 export type TestRunStatus = (typeof TEST_RUN_STATUSES)[number];
 
+export const TEST_CASE_STATUSES = ['passed', 'failed', 'skipped'] as const;
+export type TestCaseStatus = (typeof TEST_CASE_STATUSES)[number];
+
+/** One test case inside a run's report (stored as JSON in test_runs.report). */
+export interface TestCaseResult {
+  /** Full test name including describe blocks, e.g. "dashboard app > renders the overview". */
+  name: string;
+  status: TestCaseStatus;
+  /** Test file, e.g. "test/ui/app.test.ts". */
+  file?: string;
+  durationMs?: number;
+  /** Failure message + stack, for failed tests. */
+  error?: string;
+  /** Console output captured while this test ran. */
+  logs?: string;
+}
+
 export const researchActivities = sqliteTable(
   'research_activities',
   {
@@ -37,6 +54,8 @@ export const testRuns = sqliteTable(
     durationMs: integer('duration_ms'),
     summary: text('summary'),
     output: text('output'),
+    report: text('report'), // JSON array of TestCaseResult — the full per-test report
+
     researchId: text('research_id').references(() => researchActivities.id),
     ranAt: text('ran_at').notNull(),
   },
