@@ -1,7 +1,9 @@
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { Server as HttpServer } from 'node:http';
 
 import { count } from 'drizzle-orm';
 import express from 'express';
+import type { Request, RequestHandler, Response } from 'express';
 
 import { openDatabase, type WaggleDatabase } from '../db/index.js';
 import {
@@ -19,6 +21,7 @@ import { getResearch, listResearch } from '../tools/research.js';
 import { getTestRun, listTestRuns } from '../tools/tests.js';
 import {
   renderActivityList,
+  renderLogin,
   renderNotFound,
   renderOverview,
   renderProgress,
@@ -36,12 +39,103 @@ function oneOf<T extends string>(value: string | undefined, allowed: readonly T[
   return allowed.includes(value as T) ? (value as T) : undefined;
 }
 
-/**
- * Read-only local dashboard over the Waggle database. Deliberately unauthenticated:
- * it binds to loopback for local development and never mutates data.
- */
-export function createUiApp(db: WaggleDatabase): express.Express {
+const SESSION_COOKIE = 'waggle_session';
+const SESSION_TTL_MS = 7 * 24 * 3_600_000;
+
+function sessionToken(req: Request): string | undefined {
+  const cookies = req.headers.cookie?.split(';') ?? [];
+  for (const cookie of cookies) {
+    const [name, value] = cookie.trim().split('=');
+    if (name === SESSION_COOKIE && value) return value;
+  }
+  return undefined;
+}
+
+/** Reject absolute/protocol-relative URLs so ?next= can't open-redirect. */
+function safeNext(value: string | undefined): string {
+  return value && value.startsWith('/') && !value.startsWith('//') ? value : '/';
+}
+
+function passwordMatches(submitted: string, expected: string): boolean {
+  const a = Buffer.from(submitted);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+export interface UiAppOptions {
+  /**
+   * The MCP server admin password (OAUTH_ADMIN_PASSWORD) gating the dashboard.
+   * Sessions are kept in memory; a restart signs everyone out.
+   */
+  adminPassword?: string;
+}
+
+/** Read-only dashboard over the Waggle database; it never mutates the data. */
+export function createUiApp(db: WaggleDatabase, options: UiAppOptions = {}): express.Express {
   const app = express();
+  app.use(express.urlencoded({ extended: false }));
+
+  if (options.adminPassword !== undefined) {
+    const { adminPassword } = options;
+    const sessions = new Map<string, number>(); // token -> expiry epoch ms
+
+    const isAuthenticated = (req: Request): boolean => {
+      const token = sessionToken(req);
+      if (!token) return false;
+      const expiresAt = sessions.get(token);
+      if (expiresAt === undefined) return false;
+      if (expiresAt < Date.now()) {
+        sessions.delete(token);
+        return false;
+      }
+      return true;
+    };
+
+    app.get('/login', (req, res) => {
+      if (isAuthenticated(req)) {
+        res.redirect(safeNext(param(req.query.next)));
+        return;
+      }
+      res.send(renderLogin(safeNext(param(req.query.next))));
+    });
+
+    app.post('/login', (req, res) => {
+      const body = req.body as Record<string, unknown>;
+      const next = safeNext(param(body.next));
+      const password = param(body.password);
+      if (!password || !passwordMatches(password, adminPassword)) {
+        res.status(401).send(renderLogin(next, 'Incorrect password.'));
+        return;
+      }
+      const token = randomBytes(32).toString('hex');
+      sessions.set(token, Date.now() + SESSION_TTL_MS);
+      res.cookie(SESSION_COOKIE, token, {
+        httpOnly: true,
+        sameSite: 'lax',
+        maxAge: SESSION_TTL_MS,
+      });
+      res.redirect(next);
+    });
+
+    app.post('/logout', (req, res) => {
+      const token = sessionToken(req);
+      if (token) sessions.delete(token);
+      res.clearCookie(SESSION_COOKIE);
+      res.redirect('/login');
+    });
+
+    const requireSession: RequestHandler = (req, res, next) => {
+      if (isAuthenticated(req)) {
+        next();
+        return;
+      }
+      res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
+    };
+    app.use(requireSession);
+  } else {
+    // No password configured (tests / explicit opt-out): keep the routes working.
+    app.post('/logout', (_req: Request, res: Response) => res.redirect('/'));
+  }
 
   app.get('/', (_req, res) => {
     res.send(
@@ -120,16 +214,33 @@ export interface RunningUi {
   close: () => Promise<void>;
 }
 
-/** Boots the dashboard. Used by `waggle ui`. */
-export async function runUi(env: NodeJS.ProcessEnv = process.env): Promise<RunningUi> {
+export interface UiConfig {
+  port: number;
+  host: string;
+  adminPassword: string;
+}
+
+/** Required env vars for the dashboard. Throws if the admin password is missing. */
+export function parseUiConfigFromEnv(env: NodeJS.ProcessEnv = process.env): UiConfig {
+  const adminPassword = env.OAUTH_ADMIN_PASSWORD;
+  if (!adminPassword) {
+    throw new Error(
+      'OAUTH_ADMIN_PASSWORD is required for the dashboard — it is protected by the same admin password as the MCP server',
+    );
+  }
   const port = env.WAGGLE_UI_PORT ? Number.parseInt(env.WAGGLE_UI_PORT, 10) : 3204;
   if (!Number.isFinite(port) || port <= 0) {
     throw new Error(`WAGGLE_UI_PORT is not a valid port: ${env.WAGGLE_UI_PORT}`);
   }
-  const host = env.WAGGLE_UI_HOST ?? '127.0.0.1';
+  return { port, host: env.WAGGLE_UI_HOST ?? '127.0.0.1', adminPassword };
+}
+
+/** Boots the dashboard. Used by `waggle ui`. */
+export async function runUi(config: UiConfig = parseUiConfigFromEnv()): Promise<RunningUi> {
+  const { port, host, adminPassword } = config;
 
   const { db, sqlite } = openDatabase();
-  const app = createUiApp(db);
+  const app = createUiApp(db, { adminPassword });
 
   const server = await new Promise<HttpServer>((resolve, reject) => {
     const s = app.listen(port, host, (err?: Error) => {

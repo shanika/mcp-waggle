@@ -54,13 +54,17 @@ A read-only web interface over the same database — browse researches, activiti
 the progress journal without going through MCP:
 
 ```bash
-npm run ui          # http://127.0.0.1:3204
+OAUTH_ADMIN_PASSWORD=... npm run ui          # http://127.0.0.1:3204
 ```
 
-It is deliberately unauthenticated and binds to loopback; it never mutates data.
+It is protected by the same admin password as the MCP server (`OAUTH_ADMIN_PASSWORD`, the one
+the OAuth consent page uses) and refuses to start without it. Logging in sets an HttpOnly
+session cookie (7 days, kept in memory — a restart signs everyone out). The dashboard never
+mutates data.
 
 | Env var | Default | Purpose |
 | --- | --- | --- |
+| `OAUTH_ADMIN_PASSWORD` | — (required) | Same password that gates the OAuth consent page |
 | `WAGGLE_UI_PORT` | `3204` | Dashboard port |
 | `WAGGLE_UI_HOST` | `127.0.0.1` | Bind host |
 | `DB_PATH` | `~/.waggle/waggle.db` | Same database the MCP server uses |
@@ -102,7 +106,21 @@ npm run smoke       # end-to-end STDIO smoke test of the built server
 ```
 
 `node dist/index.js migrate` applies migrations and exits (they also run automatically on
-startup). `npm run db:seed` (= `node dist/index.js seed`) inserts a snapshot of real
+startup).
+
+## Deploy
+
+The hosted instance runs on the Raspberry Pi as `mcp-waggle.service` (checkout at
+`/home/pi/mcp-waggle`, config in `/etc/mcp-waggle.env`, deployed from `origin/main`):
+
+```bash
+npm run deploy      # = ./scripts/deploy-pi.sh
+```
+
+The script verifies the local tree is clean and pushed, runs the test suite (skip with
+`SKIP_TESTS=1`), then over SSH: syncs the Pi checkout to `origin/main`, `npm ci`, builds,
+restarts the service, and health-checks it locally and via https://waggle.heycasper.uk.
+Override `PI_HOST`, `PI_DIR`, `SERVICE`, `BRANCH`, or `PUBLIC_URL` via env if the setup moves. `npm run db:seed` (= `node dist/index.js seed`) inserts a snapshot of real
 tecture-graph tracking data (captured 2026-07-09 from the live Waggle instance: the CodeGraph
 DB-survey research with its linked activities and test run, plus the progress journal) into
 `DB_PATH`; it is idempotent, so re-running never duplicates rows.

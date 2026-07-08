@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { seedDatabase } from '../../src/db/seed.js';
 import { publishTestResults } from '../../src/tools/tests.js';
 import { escapeHtml, timeAgo } from '../../src/ui/render.js';
-import { createUiApp } from '../../src/ui/app.js';
+import { createUiApp, parseUiConfigFromEnv } from '../../src/ui/app.js';
 import { createTestDatabase, disposeTestDatabase, type TestDatabase } from '../db/setup.js';
 
 const RESEARCH_ID = 'res_CmR_jwPkQ-8WiaSJH0xxj';
@@ -185,6 +185,114 @@ describe('dashboard app', () => {
     const res = await request(app).get('/definitely-not-a-page');
     expect(res.status).toBe(404);
     expect(res.text).toContain('No such page');
+  });
+});
+
+describe('dashboard auth', () => {
+  const PASSWORD = 'hunter2';
+  let testDb: TestDatabase;
+  let app: ReturnType<typeof createUiApp>;
+
+  beforeEach(() => {
+    testDb = createTestDatabase();
+    seedDatabase(testDb.db);
+    app = createUiApp(testDb.db, { adminPassword: PASSWORD });
+  });
+
+  afterEach(() => {
+    disposeTestDatabase(testDb);
+  });
+
+  it('redirects anonymous requests to the login page, preserving the target', async () => {
+    const res = await request(app).get('/runs?status=failed');
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/login?next=%2Fruns%3Fstatus%3Dfailed');
+  });
+
+  it('renders the login form', async () => {
+    const res = await request(app).get('/login');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Restricted — admin only');
+    expect(res.text).toContain('name="password"');
+  });
+
+  it('rejects a wrong password with 401 and no session cookie', async () => {
+    const res = await request(app).post('/login').type('form').send({ password: 'nope', next: '/' });
+    expect(res.status).toBe(401);
+    expect(res.text).toContain('Incorrect password.');
+    expect(res.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('grants access after logging in with the admin password', async () => {
+    const agent = request.agent(app);
+
+    const login = await agent
+      .post('/login')
+      .type('form')
+      .send({ password: PASSWORD, next: '/researches' });
+    expect(login.status).toBe(302);
+    expect(login.headers.location).toBe('/researches');
+    expect(login.headers['set-cookie']![0]).toContain('waggle_session=');
+    expect(login.headers['set-cookie']![0]).toContain('HttpOnly');
+
+    const page = await agent.get('/');
+    expect(page.status).toBe(200);
+    expect(page.text).toContain('Latest progress');
+  });
+
+  it('does not open-redirect via the next parameter', async () => {
+    const res = await request(app)
+      .post('/login')
+      .type('form')
+      .send({ password: PASSWORD, next: '//evil.example/phish' });
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/');
+  });
+
+  it('rejects a made-up session cookie', async () => {
+    const res = await request(app)
+      .get('/')
+      .set('Cookie', `waggle_session=${'a'.repeat(64)}`);
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain('/login');
+  });
+
+  it('signing out ends the session', async () => {
+    const agent = request.agent(app);
+    await agent.post('/login').type('form').send({ password: PASSWORD, next: '/' });
+    expect((await agent.get('/')).status).toBe(200);
+
+    const logout = await agent.post('/logout');
+    expect(logout.status).toBe(302);
+    expect(logout.headers.location).toBe('/login');
+    expect((await agent.get('/')).status).toBe(302);
+  });
+});
+
+describe('parseUiConfigFromEnv', () => {
+  it('requires the MCP admin password', () => {
+    expect(() => parseUiConfigFromEnv({})).toThrow(/OAUTH_ADMIN_PASSWORD is required/);
+  });
+
+  it('applies defaults and reads overrides', () => {
+    expect(parseUiConfigFromEnv({ OAUTH_ADMIN_PASSWORD: 'pw' })).toEqual({
+      port: 3204,
+      host: '127.0.0.1',
+      adminPassword: 'pw',
+    });
+    expect(
+      parseUiConfigFromEnv({
+        OAUTH_ADMIN_PASSWORD: 'pw',
+        WAGGLE_UI_PORT: '4000',
+        WAGGLE_UI_HOST: '0.0.0.0',
+      }),
+    ).toEqual({ port: 4000, host: '0.0.0.0', adminPassword: 'pw' });
+  });
+
+  it('rejects an invalid port', () => {
+    expect(() =>
+      parseUiConfigFromEnv({ OAUTH_ADMIN_PASSWORD: 'pw', WAGGLE_UI_PORT: 'abc' }),
+    ).toThrow(/not a valid port/);
   });
 });
 

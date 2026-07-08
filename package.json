@@ -25,7 +25,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node dist/index.js migrate",
     "db:seed": "node dist/index.js seed",
-    "ui": "node dist/index.js ui"
+    "ui": "node dist/index.js ui",
+    "deploy": "./scripts/deploy-pi.sh"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

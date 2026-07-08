@@ -200,6 +200,32 @@ td .bar { margin: 0; width: 7rem; }
 }
 .tlogs summary:hover { color: var(--accent-cyan); }
 .tlogs pre { margin-top: 0.3rem; }
+.logout { margin-left: auto; }
+.logout button {
+  background: none; border: none; cursor: pointer; padding: 0;
+  font-family: var(--font-mono); font-weight: 500; font-size: 11px;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted);
+}
+.logout button:hover { color: var(--accent-cyan); }
+.login { display: flex; justify-content: center; padding-top: 12vh; }
+.login__card { width: 22rem; padding: 1.6rem 1.8rem; }
+.login__card p { margin: 0.6rem 0 1rem; }
+.login__card input[type="password"] {
+  display: block; width: 100%; margin-bottom: 0.8rem;
+  background: var(--bg-elevated); border: 1px solid var(--border-default);
+  color: var(--text-primary); font: 400 14px var(--font-mono); padding: 0.55rem 0.8rem;
+}
+.login__card input[type="password"]:focus { outline: 1px solid var(--accent-cyan); outline-offset: -1px; }
+.login__card button {
+  width: 100%; cursor: pointer; padding: 0.55rem 0.8rem;
+  background: var(--accent-cyan); border: 1px solid var(--accent-cyan); color: var(--on-cyan);
+  font: 600 13px var(--font-sans); letter-spacing: 0.04em;
+}
+.login__card button:hover { background: var(--text-primary); border-color: var(--text-primary); }
+.login__error {
+  border: 1px solid var(--accent-red); border-left-width: 3px; color: var(--accent-red);
+  font-size: 13px; padding: 0.5rem 0.8rem; margin-bottom: 1rem;
+}
 .empty { color: var(--text-muted); font-style: italic; padding: 0.6rem 0; }
 .crumb { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); margin-bottom: 0.4rem; }
 .prose { white-space: pre-wrap; }
@@ -221,11 +247,14 @@ const NAV = [
   ['/progress', 'Progress'],
 ] as const;
 
-export function layout(title: string, activePath: string, body: string): string {
+export function layout(title: string, activePath: string, body: string, chrome = true): string {
   const links = NAV.map(
     ([href, label]) =>
       `<a href="${href}"${href === activePath ? ' class="active"' : ''}>${label}</a>`,
   ).join('');
+  const nav = chrome
+    ? `<nav>${links}</nav><form class="logout" method="post" action="/logout"><button>sign out</button></form>`
+    : '';
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -236,11 +265,27 @@ export function layout(title: string, activePath: string, body: string): string 
 <style>${STYLES}</style>
 </head>
 <body>
-<header><span class="logo"><span class="hex">⬢</span>Waggle</span><nav>${links}</nav></header>
+<header><span class="logo"><span class="hex">⬢</span>Waggle</span>${nav}</header>
 <main>${body}</main>
 <footer>waggle — the hive ledger for tecture-graph</footer>
 </body>
 </html>`;
+}
+
+export function renderLogin(next: string, error?: string): string {
+  const body = `<div class="login">
+    <div class="card login__card">
+      <h2>Restricted — admin only</h2>
+      <p>Enter the Waggle admin password to open the dashboard.</p>
+      ${error ? `<div class="login__error">${esc(error)}</div>` : ''}
+      <form method="post" action="/login">
+        <input type="hidden" name="next" value="${esc(next)}">
+        <input type="password" name="password" placeholder="admin password" autofocus required>
+        <button type="submit">Unlock</button>
+      </form>
+    </div>
+  </div>`;
+  return layout('Sign in', '', body, false);
 }
 
 function researchCard(r: ResearchView): string {
