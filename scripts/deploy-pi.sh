@@ -59,17 +59,30 @@ npm run build
 # DB_PATH from /etc/<service>.env — no separate migrate step needed here.
 echo "→ restarting $service"
 sudo systemctl restart "$service"
-sleep 2
-
-if ! sudo systemctl is-active --quiet "$service"; then
-  echo "✗ $service failed to start; recent log:" >&2
-  sudo journalctl -u "$service" -n 30 --no-pager >&2
-  exit 1
-fi
 
 port="$(sudo grep -oE '^WAGGLE_HTTP_PORT=[0-9]+' "/etc/${service}.env" | cut -d= -f2 || true)"
-curl -fsS "http://127.0.0.1:${port:-3203}/.well-known/oauth-authorization-server" > /dev/null
-echo "✓ $service active at $(git rev-parse --short HEAD), local health OK"
+port="${port:-3203}"
+# The Host-header allowlist (DNS-rebinding protection) 403s plain
+# 127.0.0.1 requests, so present the first allowed host.
+allowed_host="$(sudo grep -oE '^WAGGLE_HTTP_ALLOWED_HOSTS=[^,]+' "/etc/${service}.env" | cut -d= -f2 || true)"
+
+echo "→ waiting for $service on port $port"
+for i in $(seq 1 20); do
+  if ! sudo systemctl is-active --quiet "$service"; then
+    echo "✗ $service failed to start; recent log:" >&2
+    sudo journalctl -u "$service" -n 30 --no-pager >&2
+    exit 1
+  fi
+  if curl -fsS ${allowed_host:+-H "Host: $allowed_host"} \
+      "http://127.0.0.1:${port}/.well-known/oauth-authorization-server" > /dev/null 2>&1; then
+    echo "✓ $service active at $(git rev-parse --short HEAD), local health OK"
+    exit 0
+  fi
+  sleep 1
+done
+echo "✗ $service is active but not answering on port $port after 20s; recent log:" >&2
+sudo journalctl -u "$service" -n 30 --no-pager >&2
+exit 1
 REMOTE
 
 say "Public health check ($PUBLIC_URL)"
