@@ -463,4 +463,50 @@ describe("HTTP transport (live server)", () => {
     const body = (await res.json()) as Record<string, unknown>;
     expect((body.error as Record<string, unknown>)?.code).toBe(-32000);
   });
+
+  it("serves the dashboard at the origin root behind the admin-password login", async () => {
+    // Anonymous: the dashboard redirects to its login page.
+    const anon = await fetch(`${h.baseUrl}/`, { redirect: "manual" });
+    expect(anon.status).toBe(302);
+    expect(anon.headers.get("location")).toBe("/login?next=%2F");
+
+    const form = await fetch(`${h.baseUrl}/login`);
+    expect(form.status).toBe(200);
+    expect(await form.text()).toContain("Restricted — admin only");
+
+    // Same admin password as the consent page unlocks a session.
+    const login = await fetch(`${h.baseUrl}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ password: ADMIN_PASSWORD, next: "/" }),
+      redirect: "manual",
+    });
+    expect(login.status).toBe(302);
+    const cookie = login.headers.get("set-cookie")!;
+    expect(cookie).toContain("waggle_session=");
+
+    const page = await fetch(`${h.baseUrl}/`, {
+      headers: { Cookie: cookie.split(";")[0] },
+    });
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain("Latest progress");
+  });
+
+  it("keeps MCP and OAuth routes out of the dashboard's session gate", async () => {
+    // /mcp still demands a Bearer token (401), not a login redirect.
+    const mcp = await fetch(`${h.baseUrl}/mcp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+      redirect: "manual",
+    });
+    expect(mcp.status).toBe(401);
+    expect(mcp.headers.get("www-authenticate")).toContain("Bearer");
+
+    const wellKnown = await fetch(
+      `${h.baseUrl}/.well-known/oauth-authorization-server`,
+      { redirect: "manual" },
+    );
+    expect(wellKnown.status).toBe(200);
+  });
 });

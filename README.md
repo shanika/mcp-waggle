@@ -62,6 +62,10 @@ the OAuth consent page uses) and refuses to start without it. Logging in sets an
 session cookie (7 days, kept in memory — a restart signs everyone out). The dashboard never
 mutates data.
 
+In HTTP mode (`WAGGLE_TRANSPORT=http`) the dashboard is also served from the MCP server's own
+origin — every path the MCP/OAuth routes don't claim — so the hosted instance's dashboard lives
+at https://waggle.heycasper.uk/ behind the same login. No separate process or port needed.
+
 | Env var | Default | Purpose |
 | --- | --- | --- |
 | `OAUTH_ADMIN_PASSWORD` | — (required) | Same password that gates the OAuth consent page |

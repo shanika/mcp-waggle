@@ -17,6 +17,7 @@ import { openDatabase, type WaggleDatabase } from '../db/index.js';
 import { WaggleOAuthProvider } from '../oauth/provider.js';
 import { OAuthStore } from '../oauth/storage.js';
 import { createServer } from '../server.js';
+import { createUiApp } from '../ui/app.js';
 
 export interface HttpTransportConfig {
   /** Canonical issuer URL — e.g. `https://waggle.heycasper.uk`. */
@@ -200,6 +201,11 @@ export function createHttpApp(
   app.post('/mcp', authMiddleware, postHandler);
   app.get('/mcp', authMiddleware, sessionHandler);
   app.delete('/mcp', authMiddleware, sessionHandler);
+
+  // The read-only dashboard is served from the same origin (everything the
+  // MCP + OAuth routes above don't claim), gated by the same admin password
+  // via its session login. Mounted last so it owns the 404 page.
+  app.use(createUiApp(db, { adminPassword: config.adminPassword }));
 
   const close = (): void => {
     for (const transport of [...transports.values()]) {
