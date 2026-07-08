@@ -5,10 +5,12 @@ import { createServer } from '../src/server.js';
 import { createTestDatabase, disposeTestDatabase, type TestDatabase } from './db/setup.js';
 
 const EXPECTED_TOOLS = [
-  'log_research',
-  'update_research',
-  'list_research',
-  'get_research',
+  'log_tecture_research',
+  'update_tecture_research',
+  'list_tecture_researches',
+  'get_tecture_research',
+  'log_activity',
+  'list_activities',
   'publish_test_results',
   'list_test_runs',
   'get_test_run',
@@ -33,7 +35,7 @@ describe('MCP server integration', () => {
     disposeTestDatabase(testDb);
   });
 
-  it('exposes all 9 tools', async () => {
+  it('exposes all 11 tools', async () => {
     const { tools } = await client.listTools();
     const names = tools.map((tool) => tool.name).sort();
     expect(names).toEqual([...EXPECTED_TOOLS].sort());
@@ -41,7 +43,7 @@ describe('MCP server integration', () => {
 
   it('round-trips a research activity through the MCP protocol', async () => {
     const logged = await client.callTool({
-      name: 'log_research',
+      name: 'log_tecture_research',
       arguments: { title: 'Cluster imports', goal: 'Recover Maven modules', tags: ['clustering'] },
     });
     expect(logged.isError).toBeFalsy();
@@ -49,7 +51,7 @@ describe('MCP server integration', () => {
     expect(view.id).toMatch(/^res_/);
 
     const fetched = await client.callTool({
-      name: 'get_research',
+      name: 'get_tecture_research',
       arguments: { researchId: view.id },
     });
     const fetchedView = JSON.parse((fetched.content as { text: string }[])[0].text);
@@ -83,7 +85,7 @@ describe('MCP server integration', () => {
 
   it('surfaces tool errors as isError results, not protocol failures', async () => {
     const result = await client.callTool({
-      name: 'get_research',
+      name: 'get_tecture_research',
       arguments: { researchId: 'res_missing' },
     });
     expect(result.isError).toBe(true);

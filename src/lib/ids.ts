@@ -11,3 +11,7 @@ export function newTestRunId(): string {
 export function newProgressId(): string {
   return `prog_${nanoid()}`;
 }
+
+export function newActivityId(): string {
+  return `act_${nanoid()}`;
+}

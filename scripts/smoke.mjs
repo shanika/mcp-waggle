@@ -23,11 +23,11 @@ function parse(result) {
 try {
   await client.connect(transport);
   const { tools } = await client.listTools();
-  if (tools.length !== 9) throw new Error(`expected 9 tools, got ${tools.length}`);
+  if (tools.length !== 11) throw new Error(`expected 11 tools, got ${tools.length}`);
 
   const research = parse(
     await client.callTool({
-      name: 'log_research',
+      name: 'log_tecture_research',
       arguments: { title: 'smoke', goal: 'verify built server works' },
     }),
   );
@@ -41,7 +41,7 @@ try {
   const progress = parse(await client.callTool({ name: 'read_progress', arguments: {} }));
   if (progress.latest?.summary !== 'smoke ok') throw new Error('progress round-trip failed');
   const full = parse(
-    await client.callTool({ name: 'get_research', arguments: { researchId: research.id } }),
+    await client.callTool({ name: 'get_tecture_research', arguments: { researchId: research.id } }),
   );
   if (full.testRuns.length !== 1) throw new Error('test run not linked to research');
 

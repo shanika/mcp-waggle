@@ -47,6 +47,23 @@ export const testRuns = sqliteTable(
   ],
 );
 
+export const activities = sqliteTable(
+  'activities',
+  {
+    id: text('id').primaryKey(), // act_<nanoid>
+    activity: text('activity').notNull(),
+    details: text('details'),
+    // NULL = general development activity directly on the code;
+    // set = activity performed as part of that research.
+    researchId: text('research_id').references(() => researchActivities.id),
+    createdAt: text('created_at').notNull(),
+  },
+  (t) => [
+    index('idx_activities_research').on(t.researchId),
+    index('idx_activities_created').on(t.createdAt),
+  ],
+);
+
 export const progressEntries = sqliteTable(
   'progress_entries',
   {
@@ -58,6 +75,8 @@ export const progressEntries = sqliteTable(
   (t) => [index('idx_progress_created').on(t.createdAt)],
 );
 
+export type Activity = typeof activities.$inferSelect;
+export type NewActivity = typeof activities.$inferInsert;
 export type ResearchActivity = typeof researchActivities.$inferSelect;
 export type NewResearchActivity = typeof researchActivities.$inferInsert;
 export type TestRun = typeof testRuns.$inferSelect;

@@ -4,8 +4,10 @@ import { z } from 'zod';
 import type { WaggleDatabase } from '../db/index.js';
 import {
   RESEARCH_STATUSES,
+  activities,
   researchActivities,
   testRuns,
+  type Activity,
   type ResearchActivity,
   type ResearchStatus,
   type TestRun,
@@ -126,7 +128,7 @@ export function listResearch(db: WaggleDatabase, input: ListResearchInput = {}):
 export function getResearch(
   db: WaggleDatabase,
   input: { researchId: string },
-): ResearchView & { testRuns: TestRun[] } {
+): ResearchView & { testRuns: TestRun[]; activities: Activity[] } {
   const row = db
     .select()
     .from(researchActivities)
@@ -141,16 +143,22 @@ export function getResearch(
     .where(eq(testRuns.researchId, input.researchId))
     .orderBy(desc(testRuns.ranAt))
     .all();
-  return { ...toView(row), testRuns: runs };
+  const linkedActivities = db
+    .select()
+    .from(activities)
+    .where(eq(activities.researchId, input.researchId))
+    .orderBy(desc(activities.createdAt))
+    .all();
+  return { ...toView(row), testRuns: runs, activities: linkedActivities };
 }
 
 export function registerResearchTools(server: McpServer, db: WaggleDatabase): void {
   server.registerTool(
-    'log_research',
+    'log_tecture_research',
     {
-      title: 'Log research activity',
+      title: 'Log tecture-graph research',
       description:
-        'Record a research activity: what is being investigated and why. Set results/status now, or update them later with update_research once the experiment concludes.',
+        'Record a tecture-graph research: what is being investigated and why. Specific to the tecture-graph project — not a general research log. Set results/status now, or update them later with update_tecture_research once the experiment concludes.',
       inputSchema: {
         title: z.string().min(1).describe('Short name for the research step'),
         goal: z.string().min(1).describe('The question this research step answers / why it is being done'),
@@ -163,10 +171,11 @@ export function registerResearchTools(server: McpServer, db: WaggleDatabase): vo
   );
 
   server.registerTool(
-    'update_research',
+    'update_tecture_research',
     {
-      title: 'Update research activity',
-      description: 'Update the results and/or status of a previously logged research activity.',
+      title: 'Update tecture-graph research',
+      description:
+        'Update the results and/or status of a previously logged tecture-graph research.',
       inputSchema: {
         researchId: z.string().min(1),
         results: z.string().optional().describe('Findings / outcome (replaces previous results)'),
@@ -177,11 +186,11 @@ export function registerResearchTools(server: McpServer, db: WaggleDatabase): vo
   );
 
   server.registerTool(
-    'list_research',
+    'list_tecture_researches',
     {
-      title: 'List research activities',
+      title: 'List tecture-graph researches',
       description:
-        'List logged research activities, newest first. Filter by status or free-text query over title/goal/results.',
+        'List logged tecture-graph researches, newest first. Filter by status or free-text query over title/goal/results.',
       inputSchema: {
         status: z.enum(RESEARCH_STATUSES).optional(),
         query: z.string().optional(),
@@ -192,10 +201,11 @@ export function registerResearchTools(server: McpServer, db: WaggleDatabase): vo
   );
 
   server.registerTool(
-    'get_research',
+    'get_tecture_research',
     {
-      title: 'Get research activity',
-      description: 'Get a single research activity by id, including any test runs linked to it.',
+      title: 'Get tecture-graph research',
+      description:
+        'Get a single tecture-graph research by id, including its linked test runs and development activities.',
       inputSchema: {
         researchId: z.string().min(1),
       },

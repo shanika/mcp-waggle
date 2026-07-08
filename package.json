@@ -1,6 +1,6 @@
 {
   "name": "mcp-waggle",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Waggle — MCP server for logging research activities, publishing test results, and tracking project progress",
   "license": "MIT",
   "type": "module",
@@ -15,7 +15,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup && cp -R src/db/migrations dist/migrations",
+    "build": "tsup && rm -rf dist/migrations && cp -R src/db/migrations dist/migrations",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -28,16 +28,20 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.11.1",
     "drizzle-orm": "^0.45.2",
+    "express": "^5.2.1",
     "nanoid": "^5.1.16",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
     "@types/node": "^26.1.1",
+    "@types/supertest": "^7.2.0",
     "@vitest/coverage-v8": "^4.1.10",
     "drizzle-kit": "^0.31.10",
     "eslint": "^10.6.0",
+    "supertest": "^7.2.2",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.63.0",
